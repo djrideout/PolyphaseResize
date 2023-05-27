@@ -1,21 +1,24 @@
 #include <windows.h>
 #include "avisynth.h"
 
-class InvertNeg : public GenericVideoFilter {
+class PolyphaseResize : public GenericVideoFilter {
 public:
-    InvertNeg(PClip _child, IScriptEnvironment* env);
+    PolyphaseResize(PClip _child, int _width, int _height, IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
+    int width;
+    int height;
 };
 
-InvertNeg::InvertNeg(PClip _child, IScriptEnvironment* env) :
-    GenericVideoFilter(_child) {
+PolyphaseResize::PolyphaseResize(PClip _child, int _width, int _height, IScriptEnvironment* env) :
+    GenericVideoFilter(_child),
+    width(_width),
+    height(_height)  {
     if (!vi.IsPlanar() || !vi.IsYUV()) {
-        env->ThrowError("InvertNeg: planar YUV data only!");
+        env->ThrowError("PolyphaseResize: planar YUV data only!");
     }
 }
 
-PVideoFrame __stdcall InvertNeg::GetFrame(int n, IScriptEnvironment* env) {
-
+PVideoFrame __stdcall PolyphaseResize::GetFrame(int n, IScriptEnvironment* env) {
     PVideoFrame src = child->GetFrame(n, env);
     PVideoFrame dst = env->NewVideoFrame(vi);
 
@@ -46,14 +49,14 @@ PVideoFrame __stdcall InvertNeg::GetFrame(int n, IScriptEnvironment* env) {
     return dst;
 }
 
-AVSValue __cdecl Create_InvertNeg(AVSValue args, void* user_data, IScriptEnvironment* env) {
-    return new InvertNeg(args[0].AsClip(), env);
+AVSValue __cdecl Create_PolyphaseResize(AVSValue args, void* user_data, IScriptEnvironment* env) {
+    return new PolyphaseResize(args[0].AsClip(), args[1].AsInt(), args[2].AsInt(), env);
 }
 
 const AVS_Linkage* AVS_linkage = 0;
 
 extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit3(IScriptEnvironment * env, const AVS_Linkage* const vectors) {
     AVS_linkage = vectors;
-    env->AddFunction("InvertNeg", "c", Create_InvertNeg, 0);
-    return "InvertNeg sample plugin";
+    env->AddFunction("PolyphaseResize", "cii", Create_PolyphaseResize, 0);
+    return "Filter for scaling pixel-perfect sources";
 }
