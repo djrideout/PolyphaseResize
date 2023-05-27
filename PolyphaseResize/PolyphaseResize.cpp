@@ -5,14 +5,15 @@ class PolyphaseResize : public GenericVideoFilter {
 public:
     PolyphaseResize(PClip _child, int _width, int _height, IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
-    int width;
-    int height;
+    int old_width;
+    int old_height;
 };
 
-PolyphaseResize::PolyphaseResize(PClip _child, int _width, int _height, IScriptEnvironment* env) :
-    GenericVideoFilter(_child),
-    width(_width),
-    height(_height)  {
+PolyphaseResize::PolyphaseResize(PClip _child, int _width, int _height, IScriptEnvironment* env) : GenericVideoFilter(_child) {
+    old_width = vi.width;
+    old_height = vi.height;
+    vi.width = _width;
+    vi.height = _height;
     if (!vi.IsPlanar() || !vi.IsYUV()) {
         env->ThrowError("PolyphaseResize: planar YUV data only!");
     }
