@@ -14,8 +14,8 @@ PolyphaseResize::PolyphaseResize(PClip _child, int _width, int _height, IScriptE
     old_height = vi.height;
     vi.width = _width;
     vi.height = _height;
-    if (!vi.IsPlanar() || !vi.IsYUV()) {
-        env->ThrowError("PolyphaseResize: planar YUV data only!");
+    if (!vi.IsRGB32()) {
+        env->ThrowError("PolyphaseResize: RGB32 data only!");
     }
 }
 
@@ -26,26 +26,21 @@ PVideoFrame __stdcall PolyphaseResize::GetFrame(int n, IScriptEnvironment* env) 
     const unsigned char* srcp;
     unsigned char* dstp;
     int src_pitch, dst_pitch, row_size, height;
-    int p, x, y;
+    int x, y;
+    srcp = src->GetReadPtr();
+    dstp = dst->GetWritePtr();
 
-    int planes[] = { PLANAR_Y, PLANAR_V, PLANAR_U };
+    src_pitch = src->GetPitch();
+    dst_pitch = dst->GetPitch();
+    row_size = dst->GetRowSize();
+    height = dst->GetHeight();
 
-    for (p = 0; p < 3; p++) {
-        srcp = src->GetReadPtr(planes[p]);
-        dstp = dst->GetWritePtr(planes[p]);
-
-        src_pitch = src->GetPitch(planes[p]);
-        dst_pitch = dst->GetPitch(planes[p]);
-        row_size = dst->GetRowSize(planes[p]);
-        height = dst->GetHeight(planes[p]);
-
-        for (y = 0; y < height; y++) {
-            for (x = 0; x < row_size; x++) {
-                dstp[x] = srcp[x] ^ 255;
-            }
-            srcp += src_pitch; // or srcp = srcp + src_pitch;
-            dstp += dst_pitch; // or dstp = dstp + dst_pitch;
+    for (y = 0; y < height; y++) {
+        for (x = 0; x < row_size; x++) {
+            dstp[x] = srcp[x] ^ 255;
         }
+        srcp += src_pitch;
+        dstp += dst_pitch;
     }
     return dst;
 }
