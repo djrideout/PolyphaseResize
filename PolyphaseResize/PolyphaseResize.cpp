@@ -5,6 +5,8 @@
 class PolyphaseResize : public GenericVideoFilter {
 public:
     PolyphaseResize(PClip _child, int _width, int _height, IScriptEnvironment* env);
+    void TurnLeft(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_pitch);
+    void TurnRight(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_pitch);
     void ScaleHorizontal(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_rowsize, int dst_pitch, int dst_height);
     void ScaleVertical(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_rowsize, int dst_pitch, int dst_height);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
@@ -22,6 +24,29 @@ PolyphaseResize::PolyphaseResize(PClip _child, int _width, int _height, IScriptE
     }
 }
 
+/**
+ * From turn_right_plane_c in AviSynth (Right and left turn are swapped in RGB32)
+ */
+void PolyphaseResize::TurnLeft(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_pitch) {
+    byte* s0 = srcp + src_pitch * (src_height - 1);
+    for (int y = 0; y < src_height; y++) {
+        byte* d0 = dstp;
+        for (int x = 0; x < src_rowsize; x += 4) {
+            *reinterpret_cast<unsigned int*>(d0) = *reinterpret_cast<unsigned int*>(s0 + x);
+            d0 += dst_pitch;
+        }
+        s0 -= src_pitch;
+        dstp += 4;
+    }
+}
+
+/**
+ * From turn_left_plane_32_c in AviSynth (Right and left turn are swapped in RGB32)
+ */
+void PolyphaseResize::TurnRight(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_pitch) {
+    TurnLeft(srcp + src_pitch * (src_height - 1), dstp + dst_pitch * (src_rowsize / 4 - 1), src_rowsize, -src_pitch, src_height, -dst_pitch);
+}
+
 void PolyphaseResize::ScaleHorizontal(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_rowsize, int dst_pitch, int dst_height) {
     int src_rowsize_uints = src_rowsize / 4;
     int src_pitch_uints = src_pitch / 4;
@@ -31,7 +56,7 @@ void PolyphaseResize::ScaleHorizontal(byte* srcp, byte* dstp, int src_rowsize, i
     for (int y = 0; y < dst_height; y++) {
         for (int x = 0; x < dst_rowsize_uints; x++) {
             // The output pixel mapped onto the original source image
-            double mapped_x = (double(x) / dst_rowsize_uints) * src_rowsize_uints;
+            double mapped_x = (static_cast<double>(x) / dst_rowsize_uints) * src_rowsize_uints;
 
             // Get scaling coefficients for this pixel
             static const int COEFFS_LENGTH = 64;
@@ -104,10 +129,10 @@ void PolyphaseResize::ScaleHorizontal(byte* srcp, byte* dstp, int src_rowsize, i
             };
             double phase = COEFFS_LENGTH * fmod((mapped_x + 0.5), 1);
             int coeffs[4] = {
-                all_coeffs[(int)phase * 4],
-                all_coeffs[(int)phase * 4 + 1],
-                all_coeffs[(int)phase * 4 + 2],
-                all_coeffs[(int)phase * 4 + 3]
+                all_coeffs[static_cast<int>(phase) * 4],
+                all_coeffs[static_cast<int>(phase) * 4 + 1],
+                all_coeffs[static_cast<int>(phase) * 4 + 2],
+                all_coeffs[static_cast<int>(phase) * 4 + 3]
             };
 
             // 4 taps per phase, 64 phases
@@ -125,20 +150,19 @@ void PolyphaseResize::ScaleHorizontal(byte* srcp, byte* dstp, int src_rowsize, i
             if (taps[3] >= src_rowsize_uints) taps[3] = src_rowsize_uints - 1;
 
             // Grab the pixel for each tap from the source image
-            unsigned int* srcp_uints = (unsigned int*)srcp;
             unsigned int pixels[4] = {
-                srcp_uints[taps[0]],
-                srcp_uints[taps[1]],
-                srcp_uints[taps[2]],
-                srcp_uints[taps[3]]
+                reinterpret_cast<unsigned int*>(srcp)[taps[0]],
+                reinterpret_cast<unsigned int*>(srcp)[taps[1]],
+                reinterpret_cast<unsigned int*>(srcp)[taps[2]],
+                reinterpret_cast<unsigned int*>(srcp)[taps[3]]
             };
 
             // Weigh the colours from each source pixel based on the coefficients for this phase to generate the result colour for this rendered pixel
             static const double lcm = 32640.0; // LCM of 128 and 255, as a double for casting
-            byte* pixel0 = (byte*)&pixels[0];
-            byte* pixel1 = (byte*)&pixels[1];
-            byte* pixel2 = (byte*)&pixels[2];
-            byte* pixel3 = (byte*)&pixels[3];
+            byte* pixel0 = reinterpret_cast<byte*>(&pixels[0]);
+            byte* pixel1 = reinterpret_cast<byte*>(&pixels[1]);
+            byte* pixel2 = reinterpret_cast<byte*>(&pixels[2]);
+            byte* pixel3 = reinterpret_cast<byte*>(&pixels[3]);
             byte* dst_pixel = &dstp[x * 4];
             dst_pixel[0] = (pixel0[0] * coeffs[0] + pixel1[0] * coeffs[1] + pixel2[0] * coeffs[2] + pixel3[0] * coeffs[3]) / lcm * 255;
             dst_pixel[1] = (pixel0[1] * coeffs[0] + pixel1[1] * coeffs[1] + pixel2[1] * coeffs[2] + pixel3[1] * coeffs[3]) / lcm * 255;
@@ -151,24 +175,44 @@ void PolyphaseResize::ScaleHorizontal(byte* srcp, byte* dstp, int src_rowsize, i
 }
 
 void PolyphaseResize::ScaleVertical(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_rowsize, int dst_pitch, int dst_height) {
-    // TODO
+    // Create buffers
+    byte* turn_bufferp = new byte[src_height * src_rowsize];
+    byte* scale_bufferp = new byte[dst_height * dst_rowsize];
+
+    // Turn source left for to prepare for horizontal scaling
+    TurnLeft(srcp, turn_bufferp, src_rowsize, src_pitch, src_height, src_height * 4);
+
+    // Scale the turned source horizontally
+    ScaleHorizontal(turn_bufferp, scale_bufferp, src_height * 4, src_height * 4, src_rowsize / 4, dst_height * 4, dst_height * 4, dst_rowsize / 4);
+
+    // Turn scaled buffer right into the destination buffer
+    TurnRight(scale_bufferp, dstp, dst_height * 4, dst_height * 4, dst_rowsize / 4, dst_pitch);
+
+    delete[] turn_bufferp;
+    delete[] scale_bufferp;
 }
 
 PVideoFrame __stdcall PolyphaseResize::GetFrame(int n, IScriptEnvironment* env) {
     PVideoFrame src = child->GetFrame(n, env);
     PVideoFrame dst = env->NewVideoFrame(vi);
 
-    byte* srcp = (byte*)src->GetReadPtr();
-    byte* dstp = (byte*)dst->GetWritePtr();
     int src_rowsize = src->GetRowSize();
     int dst_rowsize = dst->GetRowSize();
     int src_pitch = src->GetPitch();
     int dst_pitch = dst->GetPitch();
     int src_height = src->GetHeight();
     int dst_height = dst->GetHeight();
+    byte* srcp = const_cast<byte*>(src->GetReadPtr());
+    byte* bufferp = new byte[dst_pitch * src_height];
+    byte* dstp = static_cast<byte*>(dst->GetWritePtr());
 
-    ScaleHorizontal(srcp, dstp, src_rowsize, src_pitch, src_height, dst_rowsize, dst_pitch, dst_height);
+    // Pass 1: Scale horizontally from the source to the buffer.
+    ScaleHorizontal(srcp, bufferp, src_rowsize, src_pitch, src_height, dst_rowsize, dst_pitch, src_height);
 
+    // Pass 2: Scale vertically from the buffer to the destination.
+    ScaleVertical(bufferp, dstp, dst_rowsize, dst_pitch, src_height, dst_rowsize, dst_pitch, dst_height);
+
+    delete[] bufferp;
     return dst;
 }
 
