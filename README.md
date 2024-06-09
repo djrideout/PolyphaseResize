@@ -1,16 +1,11 @@
 # PolyphaseResize
-AviSynth filter for scaling pixel-perfect sources
+AviSynth filter for scaling pixel-perfect sources. Requires a RGB32 source.
+Example source clips could include NES/SNES footage at 256x224, Game Boy footage at 160x144, etc.
 
-Currently only scales horizontally, both passes at once is planned.
-
-Example usage (assuming 256x224 clip resolution):
-
+Usage:
 ```
 LoadPlugin("PolyphaseResize.dll")
 AviSource("clip.avi")
 ConvertToRGB32()
-PolyphaseResize(1440, 224)
-TurnLeft()
-PolyphaseResize(1080, 1440)
-TurnRight()
+PolyphaseResize(1440, 1080)
 ```
