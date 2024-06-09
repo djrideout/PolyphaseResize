@@ -5,6 +5,7 @@
 class PolyphaseResize : public GenericVideoFilter {
 public:
     PolyphaseResize(PClip _child, int _width, int _height, IScriptEnvironment* env);
+    ~PolyphaseResize();
     void TurnLeft(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_pitch);
     void TurnRight(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_pitch);
     void ScaleHorizontal(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_rowsize, int dst_pitch, int dst_height);
@@ -12,6 +13,9 @@ public:
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
     int old_width;
     int old_height;
+    byte* horizontal_bufferp;
+    byte* turn_bufferp;
+    byte* scale_bufferp;
 };
 
 PolyphaseResize::PolyphaseResize(PClip _child, int _width, int _height, IScriptEnvironment* env) : GenericVideoFilter(_child) {
@@ -19,9 +23,18 @@ PolyphaseResize::PolyphaseResize(PClip _child, int _width, int _height, IScriptE
     old_height = vi.height;
     vi.width = _width;
     vi.height = _height;
+    horizontal_bufferp = new byte[_width * 4 * old_height];
+    turn_bufferp = new byte[_width * 4 * old_height];
+    scale_bufferp = new byte[_width * 4 * _height];
     if (!vi.IsRGB32()) {
         env->ThrowError("PolyphaseResize: RGB32 data only!");
     }
+}
+
+PolyphaseResize::~PolyphaseResize() {
+    delete[] horizontal_bufferp;
+    delete[] turn_bufferp;
+    delete[] scale_bufferp;
 }
 
 /**
@@ -175,10 +188,6 @@ void PolyphaseResize::ScaleHorizontal(byte* srcp, byte* dstp, int src_rowsize, i
 }
 
 void PolyphaseResize::ScaleVertical(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_rowsize, int dst_pitch, int dst_height) {
-    // Create buffers
-    byte* turn_bufferp = new byte[src_height * src_rowsize];
-    byte* scale_bufferp = new byte[dst_height * dst_rowsize];
-
     // Turn source left for to prepare for horizontal scaling
     TurnLeft(srcp, turn_bufferp, src_rowsize, src_pitch, src_height, src_height * 4);
 
@@ -187,9 +196,6 @@ void PolyphaseResize::ScaleVertical(byte* srcp, byte* dstp, int src_rowsize, int
 
     // Turn scaled buffer right into the destination buffer
     TurnRight(scale_bufferp, dstp, dst_height * 4, dst_height * 4, dst_rowsize / 4, dst_pitch);
-
-    delete[] turn_bufferp;
-    delete[] scale_bufferp;
 }
 
 PVideoFrame __stdcall PolyphaseResize::GetFrame(int n, IScriptEnvironment* env) {
@@ -203,16 +209,14 @@ PVideoFrame __stdcall PolyphaseResize::GetFrame(int n, IScriptEnvironment* env) 
     int src_height = src->GetHeight();
     int dst_height = dst->GetHeight();
     byte* srcp = const_cast<byte*>(src->GetReadPtr());
-    byte* bufferp = new byte[dst_pitch * src_height];
     byte* dstp = static_cast<byte*>(dst->GetWritePtr());
 
     // Pass 1: Scale horizontally from the source to the buffer.
-    ScaleHorizontal(srcp, bufferp, src_rowsize, src_pitch, src_height, dst_rowsize, dst_pitch, src_height);
+    ScaleHorizontal(srcp, horizontal_bufferp, src_rowsize, src_pitch, src_height, dst_rowsize, dst_rowsize, src_height);
 
     // Pass 2: Scale vertically from the buffer to the destination.
-    ScaleVertical(bufferp, dstp, dst_rowsize, dst_pitch, src_height, dst_rowsize, dst_pitch, dst_height);
+    ScaleVertical(horizontal_bufferp, dstp, dst_rowsize, dst_rowsize, src_height, dst_rowsize, dst_pitch, dst_height);
 
-    delete[] bufferp;
     return dst;
 }
 
