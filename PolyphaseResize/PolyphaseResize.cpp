@@ -5,6 +5,8 @@
 class PolyphaseResize : public GenericVideoFilter {
 public:
     PolyphaseResize(PClip _child, int _width, int _height, IScriptEnvironment* env);
+    void ScaleHorizontal(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_rowsize, int dst_pitch, int dst_height);
+    void ScaleVertical(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_rowsize, int dst_pitch, int dst_height);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env);
     int old_width;
     int old_height;
@@ -20,32 +22,16 @@ PolyphaseResize::PolyphaseResize(PClip _child, int _width, int _height, IScriptE
     }
 }
 
-PVideoFrame __stdcall PolyphaseResize::GetFrame(int n, IScriptEnvironment* env) {
-    PVideoFrame src = child->GetFrame(n, env);
-    PVideoFrame dst = env->NewVideoFrame(vi);
+void PolyphaseResize::ScaleHorizontal(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_rowsize, int dst_pitch, int dst_height) {
+    int src_rowsize_uints = src_rowsize / 4;
+    int src_pitch_uints = src_pitch / 4;
+    int dst_rowsize_uints = dst_rowsize / 4;
+    int dst_pitch_uints = dst_pitch / 4;
 
-    const unsigned int* srcp;
-    unsigned int* dstp;
-    int src_width, dst_width, src_height, dst_height;
-    int x, y;
-    srcp = (unsigned int*)src->GetReadPtr();
-    dstp = (unsigned int*)dst->GetWritePtr();
-
-    src_width = src->GetPitch() / 4;
-    dst_width = dst->GetPitch() / 4;
-    src_height = src->GetHeight();
-    dst_height = dst->GetHeight();
-
-    for (y = 0; y < dst_height; y++) {
-        for (x = 0; x < dst_width; x++) {
-            // Pass 1: horizontal
-
+    for (int y = 0; y < dst_height; y++) {
+        for (int x = 0; x < dst_rowsize_uints; x++) {
             // The output pixel mapped onto the original source image
-            float mapped_x = (float(x) / dst_width) * src_width;
-            float mapped_y = (float(y) / dst_height) * src_height;
-
-            // Get the mapped pixel to interpolate
-            float to_scale = mapped_x;
+            double mapped_x = (double(x) / dst_rowsize_uints) * src_rowsize_uints;
 
             // Get scaling coefficients for this pixel
             static const int COEFFS_LENGTH = 64;
@@ -116,7 +102,7 @@ PVideoFrame __stdcall PolyphaseResize::GetFrame(int n, IScriptEnvironment* env) 
                 0,   0, 128,   0,
                 0,   0, 128,   0
             };
-            float phase = COEFFS_LENGTH * fmod((to_scale + 0.5), 1);
+            double phase = COEFFS_LENGTH * fmod((mapped_x + 0.5), 1);
             int coeffs[4] = {
                 all_coeffs[(int)phase * 4],
                 all_coeffs[(int)phase * 4 + 1],
@@ -126,44 +112,63 @@ PVideoFrame __stdcall PolyphaseResize::GetFrame(int n, IScriptEnvironment* env) 
 
             // 4 taps per phase, 64 phases
             int taps[4] = {
-                to_scale - 1.5,
-                to_scale - 0.5,
-                to_scale + 0.5,
-                to_scale + 1.5
+                mapped_x - 1.5,
+                mapped_x - 0.5,
+                mapped_x + 0.5,
+                mapped_x + 1.5
             };
-
-            // Determine which dimension to clamp with based on scaling direction
-            int source_dimension = src_width;
 
             // Grab the pixel for each tap from the source image
             if (taps[0] < 0) taps[0] = 0;
             if (taps[1] < 0) taps[1] = 0;
-            if (taps[2] >= source_dimension) taps[2] = source_dimension - 1;
-            if (taps[3] >= source_dimension) taps[3] = source_dimension - 1;
+            if (taps[2] >= src_rowsize_uints) taps[2] = src_rowsize_uints - 1;
+            if (taps[3] >= src_rowsize_uints) taps[3] = src_rowsize_uints - 1;
 
             // Grab the pixel for each tap from the source image
+            unsigned int* srcp_uints = (unsigned int*)srcp;
             unsigned int pixels[4] = {
-                srcp[taps[0]],
-                srcp[taps[1]],
-                srcp[taps[2]],
-                srcp[taps[3]]
+                srcp_uints[taps[0]],
+                srcp_uints[taps[1]],
+                srcp_uints[taps[2]],
+                srcp_uints[taps[3]]
             };
 
             // Weigh the colours from each source pixel based on the coefficients for this phase to generate the result colour for this rendered pixel
-            static const float lcm = 32640.0; // LCM of 128 and 255, as a float for casting
+            static const double lcm = 32640.0; // LCM of 128 and 255, as a double for casting
             byte* pixel0 = (byte*)&pixels[0];
             byte* pixel1 = (byte*)&pixels[1];
             byte* pixel2 = (byte*)&pixels[2];
             byte* pixel3 = (byte*)&pixels[3];
-            byte* dst_pixel = (byte*)&dstp[x];
+            byte* dst_pixel = &dstp[x * 4];
             dst_pixel[0] = (pixel0[0] * coeffs[0] + pixel1[0] * coeffs[1] + pixel2[0] * coeffs[2] + pixel3[0] * coeffs[3]) / lcm * 255;
             dst_pixel[1] = (pixel0[1] * coeffs[0] + pixel1[1] * coeffs[1] + pixel2[1] * coeffs[2] + pixel3[1] * coeffs[3]) / lcm * 255;
             dst_pixel[2] = (pixel0[2] * coeffs[0] + pixel1[2] * coeffs[1] + pixel2[2] * coeffs[2] + pixel3[2] * coeffs[3]) / lcm * 255;
             dst_pixel[3] = (pixel0[3] * coeffs[0] + pixel1[3] * coeffs[1] + pixel2[3] * coeffs[2] + pixel3[3] * coeffs[3]) / lcm * 255;
         }
-        srcp += src_width;
-        dstp += dst_width;
+        srcp += src_pitch;
+        dstp += dst_pitch;
     }
+}
+
+void PolyphaseResize::ScaleVertical(byte* srcp, byte* dstp, int src_rowsize, int src_pitch, int src_height, int dst_rowsize, int dst_pitch, int dst_height) {
+    // TODO
+}
+
+PVideoFrame __stdcall PolyphaseResize::GetFrame(int n, IScriptEnvironment* env) {
+    PVideoFrame src = child->GetFrame(n, env);
+    PVideoFrame dst = env->NewVideoFrame(vi);
+
+    byte* srcp = (byte*)src->GetReadPtr();
+    byte* dstp = (byte*)dst->GetWritePtr();
+    int src_rowsize = src->GetRowSize();
+    int dst_rowsize = dst->GetRowSize();
+    int src_pitch = src->GetPitch();
+    int dst_pitch = dst->GetPitch();
+    int src_height = src->GetHeight();
+    int dst_height = dst->GetHeight();
+
+    ScaleHorizontal(srcp, dstp, src_rowsize, src_pitch, src_height, dst_rowsize, dst_pitch, dst_height);
+
     return dst;
 }
 
