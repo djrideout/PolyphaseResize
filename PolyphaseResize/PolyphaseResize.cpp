@@ -167,7 +167,7 @@ PVideoFrame __stdcall PolyphaseResize::GetFrame(int n, IScriptEnvironment* env) 
     byte* dstp = static_cast<byte*>(dst->GetWritePtr());
 
     // Pass 1: Scale horizontally from the source to the buffer.
-    Scale(srcp, bufferp, src_rowsize / 4, dst_rowsize / 4, src_height, 4, src_pitch, 4, dst_pitch);
+    Scale(srcp, bufferp, src_rowsize / 4, dst_rowsize / 4, src_height, 4, src_pitch, 4, dst_rowsize);
 
     // Pass 2: Scale vertically from the buffer to the destination.
     Scale(bufferp, dstp, src_height, dst_height, dst_rowsize / 4, dst_rowsize, 4, dst_pitch, 4);
