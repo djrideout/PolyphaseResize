@@ -148,7 +148,8 @@ void PolyphaseResize::Scale(byte* srcp, byte* dstp, int src_width, int dst_width
             dst_pixel[0] = (pixel0[0] * coeffs[0] + pixel1[0] * coeffs[1] + pixel2[0] * coeffs[2] + pixel3[0] * coeffs[3]) / lcm * 255;
             dst_pixel[1] = (pixel0[1] * coeffs[0] + pixel1[1] * coeffs[1] + pixel2[1] * coeffs[2] + pixel3[1] * coeffs[3]) / lcm * 255;
             dst_pixel[2] = (pixel0[2] * coeffs[0] + pixel1[2] * coeffs[1] + pixel2[2] * coeffs[2] + pixel3[2] * coeffs[3]) / lcm * 255;
-            dst_pixel[3] = (pixel0[3] * coeffs[0] + pixel1[3] * coeffs[1] + pixel2[3] * coeffs[2] + pixel3[3] * coeffs[3]) / lcm * 255;
+            // This is the alpha byte, realistically these types of clips shouldn't have transparency and it's faster to not do this math
+            dst_pixel[3] = 0;
         }
     });
 }
