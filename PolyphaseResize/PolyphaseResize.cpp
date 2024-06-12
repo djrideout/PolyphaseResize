@@ -106,15 +106,10 @@ void PolyphaseResize::Scale(byte* srcp, byte* dstp, int src_width, int dst_width
                 0,   0, 128,   0,
                 0,   0, 128,   0
             };
-            double phase = COEFFS_LENGTH * fmod((mapped_x + 0.5), 1);
-            int coeffs[4] = {
-                all_coeffs[static_cast<int>(phase) * 4],
-                all_coeffs[static_cast<int>(phase) * 4 + 1],
-                all_coeffs[static_cast<int>(phase) * 4 + 2],
-                all_coeffs[static_cast<int>(phase) * 4 + 3]
-            };
+            double phase = fmod((mapped_x + 0.5), 1) * COEFFS_LENGTH;
+            int* coeffs = &all_coeffs[static_cast<int>(phase) * 4];
 
-            int src_x_scale_uints = src_x_scale / 4;
+            int src_x_scale_uints = src_x_scale >> 2;
 
             // 4 taps per phase, 64 phases
             int taps[4] = {
@@ -167,10 +162,10 @@ PVideoFrame __stdcall PolyphaseResize::GetFrame(int n, IScriptEnvironment* env) 
     byte* dstp = static_cast<byte*>(dst->GetWritePtr());
 
     // Pass 1: Scale horizontally from the source to the buffer.
-    Scale(srcp, bufferp, src_rowsize / 4, dst_rowsize / 4, src_height, 4, src_pitch, 4, dst_rowsize);
+    Scale(srcp, bufferp, src_rowsize >> 2, dst_rowsize >> 2, src_height, 4, src_pitch, 4, dst_rowsize);
 
     // Pass 2: Scale vertically from the buffer to the destination.
-    Scale(bufferp, dstp, src_height, dst_height, dst_rowsize / 4, dst_rowsize, 4, dst_pitch, 4);
+    Scale(bufferp, dstp, src_height, dst_height, dst_rowsize >> 2, dst_rowsize, 4, dst_pitch, 4);
 
     return dst;
 }
