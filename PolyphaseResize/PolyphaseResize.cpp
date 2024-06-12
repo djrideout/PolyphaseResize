@@ -106,43 +106,37 @@ void PolyphaseResize::Scale(byte* srcp, byte* dstp, int src_width, int dst_width
             // The output pixel mapped onto the original source image
             double mapped_x = (static_cast<double>(x) / dst_width) * src_width;
 
+            // 4 taps per phase, 64 phases
+            int taps[4] = {
+                mapped_x - 1.5,
+                mapped_x - 0.5,
+                mapped_x + 0.5,
+                mapped_x + 1.5
+            };
+
+            // Clamp the pixel indices
+            if (taps[0] < 0) taps[0] = 0;
+            if (taps[1] < 0) taps[1] = 0;
+            if (taps[2] >= src_width) taps[2] = src_width - 1;
+            if (taps[3] >= src_width) taps[3] = src_width - 1;
+
+            // Grab the pixel for each tap from the source image
+            byte* pixels[4] = {
+                s0 + taps[0] * src_x_scale,
+                s0 + taps[1] * src_x_scale,
+                s0 + taps[2] * src_x_scale,
+                s0 + taps[3] * src_x_scale
+            };
+
             // Get scaling coefficients for this pixel
             double phase = fmod((mapped_x + 0.5), 1) * COEFFS_LENGTH;
             const int* coeffs = &all_coeffs[static_cast<int>(phase) * 4];
 
-            int src_x_scale_uints = src_x_scale >> 2;
-
-            // 4 taps per phase, 64 phases
-            int taps[4] = {
-                static_cast<int>(mapped_x - 1.5) * src_x_scale_uints,
-                static_cast<int>(mapped_x - 0.5) * src_x_scale_uints,
-                static_cast<int>(mapped_x + 0.5) * src_x_scale_uints,
-                static_cast<int>(mapped_x + 1.5) * src_x_scale_uints
-            };
-
-            // Grab the pixel for each tap from the source image
-            if (taps[0] < 0) taps[0] = 0;
-            if (taps[1] < 0) taps[1] = 0;
-            if (taps[2] >= src_width * src_x_scale_uints) taps[2] = (src_width - 1) * src_x_scale_uints;
-            if (taps[3] >= src_width * src_x_scale_uints) taps[3] = (src_width - 1) * src_x_scale_uints;
-
-            // Grab the pixel for each tap from the source image
-            unsigned int pixels[4] = {
-                reinterpret_cast<unsigned int*>(s0)[taps[0]],
-                reinterpret_cast<unsigned int*>(s0)[taps[1]],
-                reinterpret_cast<unsigned int*>(s0)[taps[2]],
-                reinterpret_cast<unsigned int*>(s0)[taps[3]]
-            };
-
             // Weigh the colours from each source pixel based on the coefficients for this phase to generate the result colour for this rendered pixel
-            byte* pixel0 = reinterpret_cast<byte*>(&pixels[0]);
-            byte* pixel1 = reinterpret_cast<byte*>(&pixels[1]);
-            byte* pixel2 = reinterpret_cast<byte*>(&pixels[2]);
-            byte* pixel3 = reinterpret_cast<byte*>(&pixels[3]);
             byte* dst_pixel = d0 + x * dst_x_scale;
-            dst_pixel[0] = (pixel0[0] * coeffs[0] + pixel1[0] * coeffs[1] + pixel2[0] * coeffs[2] + pixel3[0] * coeffs[3]) >> 7;
-            dst_pixel[1] = (pixel0[1] * coeffs[0] + pixel1[1] * coeffs[1] + pixel2[1] * coeffs[2] + pixel3[1] * coeffs[3]) >> 7;
-            dst_pixel[2] = (pixel0[2] * coeffs[0] + pixel1[2] * coeffs[1] + pixel2[2] * coeffs[2] + pixel3[2] * coeffs[3]) >> 7;
+            dst_pixel[0] = (pixels[0][0] * coeffs[0] + pixels[1][0] * coeffs[1] + pixels[2][0] * coeffs[2] + pixels[3][0] * coeffs[3]) >> 7;
+            dst_pixel[1] = (pixels[0][1] * coeffs[0] + pixels[1][1] * coeffs[1] + pixels[2][1] * coeffs[2] + pixels[3][1] * coeffs[3]) >> 7;
+            dst_pixel[2] = (pixels[0][2] * coeffs[0] + pixels[1][2] * coeffs[1] + pixels[2][2] * coeffs[2] + pixels[3][2] * coeffs[3]) >> 7;
             // This is the alpha byte, realistically these types of clips shouldn't have transparency and it's faster to not do this math
             dst_pixel[3] = 0;
         }
