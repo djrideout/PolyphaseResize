@@ -106,26 +106,20 @@ void PolyphaseResize::Scale(byte* srcp, byte* dstp, int src_width, int dst_width
             // The output pixel mapped onto the original source image
             double mapped_x = (static_cast<double>(x) / dst_width) * src_width;
 
-            // 4 taps per phase, 64 phases
-            int taps[4] = {
-                mapped_x - 1.5,
+            // 2 taps per phase, 64 phases
+            int taps[2] = {
                 mapped_x - 0.5,
-                mapped_x + 0.5,
-                mapped_x + 1.5
+                mapped_x + 0.5
             };
 
             // Clamp the pixel indices
             if (taps[0] < 0) taps[0] = 0;
-            if (taps[1] < 0) taps[1] = 0;
-            if (taps[2] >= src_width) taps[2] = src_width - 1;
-            if (taps[3] >= src_width) taps[3] = src_width - 1;
+            if (taps[1] >= src_width) taps[1] = src_width - 1;
 
             // Grab the pixel for each tap from the source image
-            byte* pixels[4] = {
+            byte* pixels[2] = {
                 s0 + taps[0] * src_x_scale,
-                s0 + taps[1] * src_x_scale,
-                s0 + taps[2] * src_x_scale,
-                s0 + taps[3] * src_x_scale
+                s0 + taps[1] * src_x_scale
             };
 
             // Get scaling coefficients for this pixel
@@ -134,9 +128,9 @@ void PolyphaseResize::Scale(byte* srcp, byte* dstp, int src_width, int dst_width
 
             // Weigh the colours from each source pixel based on the coefficients for this phase to generate the result colour for this rendered pixel
             byte* dst_pixel = d0 + x * dst_x_scale;
-            dst_pixel[0] = (pixels[0][0] * coeffs[0] + pixels[1][0] * coeffs[1] + pixels[2][0] * coeffs[2] + pixels[3][0] * coeffs[3]) >> 7;
-            dst_pixel[1] = (pixels[0][1] * coeffs[0] + pixels[1][1] * coeffs[1] + pixels[2][1] * coeffs[2] + pixels[3][1] * coeffs[3]) >> 7;
-            dst_pixel[2] = (pixels[0][2] * coeffs[0] + pixels[1][2] * coeffs[1] + pixels[2][2] * coeffs[2] + pixels[3][2] * coeffs[3]) >> 7;
+            dst_pixel[0] = (pixels[0][0] * coeffs[1] + pixels[1][0] * coeffs[2]) >> 7;
+            dst_pixel[1] = (pixels[0][1] * coeffs[1] + pixels[1][1] * coeffs[2]) >> 7;
+            dst_pixel[2] = (pixels[0][2] * coeffs[1] + pixels[1][2] * coeffs[2]) >> 7;
             // This is the alpha byte, realistically these types of clips shouldn't have transparency and it's faster to not do this math
             dst_pixel[3] = 0;
         }
