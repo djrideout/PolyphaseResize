@@ -1,6 +1,5 @@
 #include <windows.h>
 #include <ppl.h>
-#include <cmath>
 #include "avisynth.h"
 
 static const int COEFFS_LENGTH = 64;
@@ -123,7 +122,7 @@ void PolyphaseResize::Scale(byte* srcp, byte* dstp, int src_width, int dst_width
             };
 
             // Get scaling coefficients for this pixel
-            double phase = fmod((mapped_x + 0.5), 1) * COEFFS_LENGTH;
+            double phase = ((mapped_x + 0.5) - static_cast<int>(mapped_x + 0.5)) * COEFFS_LENGTH;
             const int* coeffs = &all_coeffs[static_cast<int>(phase) * 4];
 
             // Weigh the colours from each source pixel based on the coefficients for this phase to generate the result colour for this rendered pixel
